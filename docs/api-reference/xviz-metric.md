@@ -33,7 +33,9 @@ Custom CSS overrides. Supports all
 [MetricCard](https://github.com/uber-web/monochrome/blob/master/src/metric-card/README.md#styling)
 and
 [MetricChart](https://github.com/uber-web/monochrome/blob/master/src/metric-card/README.md#styling-1)
-options.
+options, plus the following fields:
+
+- `missingData`: CSS overrides for the "missing data" message
 
 ##### getColor (Object|Function|String, optional)
 
@@ -108,9 +110,9 @@ store:
 
 The current playback position of the log.
 
-##### metadata (Object)
+##### streamsMetadata (Object)
 
-The log metadata.
+A map from stream names to their metadata.
 
 ##### logStreams (Object)
 

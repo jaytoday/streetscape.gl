@@ -24,12 +24,11 @@ export default `\
 attribute vec3 positions;
 attribute vec4 instanceColors;
 attribute vec3 instancePositions;
-attribute vec2 instancePositions64xyLow;
+attribute vec3 instancePositions64Low;
 attribute vec3 instancePickingColors;
 
-uniform float colorSize;
 uniform float opacity;
-uniform float pointSize;
+uniform float radiusPixels;
 uniform float colorMode;
 uniform vec2 colorDomain;
 uniform mat4 vehicleDistanceTransform;
@@ -67,12 +66,20 @@ vec3 distToRgb(float dist) {
 }
 
 void main(void) {
+  geometry.worldPosition = instancePositions;
+
   // position on the containing square in [-1, 1] space
   unitPosition = positions.xy;
+  geometry.uv = unitPosition;
+  geometry.pickingColor = instancePickingColors;
 
   // Find the center of the point and add the current vertex
-  gl_Position = project_position_to_clipspace(instancePositions, instancePositions64xyLow, vec3(0.));
-  gl_Position.xy += project_pixel_size_to_clipspace(positions.xy * pointSize) * project_uFocalDistance;
+  vec3 offset = vec3(positions.xy * radiusPixels, 0.0);
+  DECKGL_FILTER_SIZE(offset, geometry);
+
+  gl_Position = project_position_to_clipspace(instancePositions, instancePositions64Low, vec3(0.), geometry.position);
+  gl_Position.xy += project_pixel_size_to_clipspace(offset.xy) * project_uFocalDistance;
+  DECKGL_FILTER_GL_POSITION(gl_Position, geometry);
 
   vec4 colorPosition;
   if (colorMode == COLOR_MODE_DISTANCE) {
@@ -82,11 +89,10 @@ void main(void) {
     colorPosition = project_uModelMatrix * vec4(instancePositions, 1.0);
     vColor = vec4(distToRgb(colorPosition.z), opacity);
   } else {
-    float alpha = colorSize == 3.0 ? 255. : instanceColors.a;
-    vColor = vec4(instanceColors.rgb, alpha * opacity) / 255.;
+    vColor = vec4(instanceColors.rgb, instanceColors.a * opacity);
   }
 
   // Set color to be rendered to picking fbo (also used to check for selection highlight).
-  picking_setPickingColor(instancePickingColors);
+  DECKGL_FILTER_COLOR(vColor, geometry);
 }
 `;

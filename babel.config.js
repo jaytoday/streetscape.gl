@@ -16,7 +16,9 @@ const getBabelConfig = require('ocular-dev-tools/config/babel.config');
 module.exports = api => {
   const config = getBabelConfig(api);
 
-  config.presets.push('@babel/react');
+  config.presets = config.presets || [];
+
+  config.presets.push('@babel/react', '@babel/flow');
 
   config.plugins = config.plugins || [];
 

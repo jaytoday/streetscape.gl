@@ -22,8 +22,6 @@
 import React, {PureComponent} from 'react';
 import PropTypes from 'prop-types';
 
-import {_MapContext as MapContext} from 'react-map-gl';
-
 import PerspectivePopup from './perspective-popup';
 
 import {resolveCoordinateTransform, positionToLngLat} from '../../utils/transform';
@@ -34,7 +32,7 @@ export default class ObjectLabelsOverlay extends PureComponent {
   static propTypes = {
     objectSelection: PropTypes.object,
     frame: PropTypes.object,
-    metadata: PropTypes.object,
+    streamsMetadata: PropTypes.object,
     xvizStyleParser: PropTypes.object,
 
     renderObjectLabel: PropTypes.func,
@@ -73,9 +71,13 @@ export default class ObjectLabelsOverlay extends PureComponent {
       return result;
     }
 
-    const {frame, metadata, getTransformMatrix} = this.props;
-    const streamMetadata = metadata.streams && metadata.streams[streamName];
-    result = resolveCoordinateTransform(frame, streamMetadata, getTransformMatrix);
+    const {frame, streamsMetadata, getTransformMatrix} = this.props;
+    result = resolveCoordinateTransform(
+      frame,
+      streamName,
+      streamsMetadata[streamName],
+      getTransformMatrix
+    );
     // cache calculated coordinate props by stream name
     coordinateProps[streamName] = result;
 
@@ -134,16 +136,12 @@ export default class ObjectLabelsOverlay extends PureComponent {
   };
 
   render() {
-    const {frame, viewport, renderObjectLabel} = this.props;
+    const {frame, renderObjectLabel} = this.props;
 
     if (!frame || !renderObjectLabel) {
       return null;
     }
 
-    return (
-      <MapContext.Provider value={{viewport}}>
-        {Object.values(frame.objects).map(this._renderPerspectivePopup)}
-      </MapContext.Provider>
-    );
+    return Object.values(frame.objects).map(this._renderPerspectivePopup);
   }
 }

@@ -21,21 +21,17 @@
 import {getXVIZConfig, StreamSynchronizer, LOG_STREAM_MESSAGE} from '@xviz/parser';
 import {clamp} from 'math.gl';
 
+import PlayableLoaderInterface from './playable-loader-interface';
 import createSelector from '../utils/create-selector';
 import stats from '../utils/stats';
 
 /* eslint-disable callback-return */
-export default class XVIZLoaderInterface {
+export default class XVIZLoaderInterface extends PlayableLoaderInterface {
   constructor(options = {}) {
+    super();
     this.options = options;
     this._debug = options.debug || (() => {});
     this.callbacks = {};
-
-    this.listeners = [];
-    this.state = {};
-    this._updates = 0;
-    this._version = 0;
-    this._updateTimer = null;
   }
 
   /* Event types:
@@ -71,32 +67,6 @@ export default class XVIZLoaderInterface {
     stats.get(`loader-${eventType}`).incrementCount();
   }
 
-  subscribe(instance) {
-    this.listeners.push(instance);
-  }
-
-  unsubscribe(instance) {
-    const index = this.listeners.findIndex(o => o === instance);
-    if (index >= 0) {
-      this.listeners.splice(index, 1);
-    }
-  }
-
-  get(key) {
-    return this.state[key];
-  }
-
-  set(key, value) {
-    if (this.state[key] !== value) {
-      this.state[key] = value;
-      this._version++;
-      if (!this._updateTimer) {
-        /* global requestAnimationFrame */
-        this._updateTimer = requestAnimationFrame(this._update);
-      }
-    }
-  }
-
   onXVIZMessage = message => {
     switch (message.type) {
       case LOG_STREAM_MESSAGE.METADATA:
@@ -122,15 +92,6 @@ export default class XVIZLoaderInterface {
     this.emit('error', error);
   };
 
-  /* Connection API */
-  isOpen() {
-    return false;
-  }
-
-  connect() {
-    throw new Error('not implemented');
-  }
-
   seek(timestamp) {
     const metadata = this.getMetadata();
 
@@ -149,30 +110,18 @@ export default class XVIZLoaderInterface {
     this.streamBuffer.setCurrentTime(timestamp);
   }
 
-  setLookAhead(lookAhead) {
-    this.set('lookAhead', lookAhead);
-  }
-
   updateStreamSettings(settings) {
     const streamSettings = this.get('streamSettings');
     this.set('streamSettings', {...streamSettings, ...settings});
   }
 
-  close() {
-    throw new Error('not implemented');
-  }
-
   /* Data selector API */
-
-  getCurrentTime = () => this.get('timestamp');
-
-  getLookAhead = () => this.get('lookAhead');
 
   getMetadata = () => this.get('metadata');
 
   getStreamSettings = () => this.get('streamSettings');
 
-  _getDataVersion = () => this.get('dataVersion');
+  _getStreamsMetadata = () => this.get('streamsMetadata');
 
   _getStreams = createSelector(this, this._getDataVersion, () => this._getDataByStream());
 
@@ -196,6 +145,16 @@ export default class XVIZLoaderInterface {
       return result;
     }
   );
+
+  getStreamsMetadata = getXVIZConfig().DYNAMIC_STREAM_METADATA
+    ? createSelector(
+        this,
+        [this.getMetadata, this._getStreamsMetadata],
+        (metadata, streamsMetadata) => {
+          return Object.assign({}, streamsMetadata, metadata && metadata.streams);
+        }
+      )
+    : createSelector(this, this.getMetadata, metadata => (metadata && metadata.streams) || {});
 
   getBufferStartTime = createSelector(this, this.getCurrentTime, () => this._getBufferStartTime());
   getBufferEndTime = createSelector(this, this.getCurrentTime, () => this._getBufferEndTime());
@@ -221,17 +180,6 @@ export default class XVIZLoaderInterface {
     }
   );
 
-  /* Private actions */
-  _update = () => {
-    this._updateTimer = null;
-    this.listeners.forEach(o => o(this._version));
-  };
-
-  _bumpDataVersion() {
-    this._updates++;
-    this.set('dataVersion', this._updates);
-  }
-
   /* Subclass hooks */
 
   _onXVIZMetadata(metadata) {
@@ -253,10 +201,27 @@ export default class XVIZLoaderInterface {
   }
 
   _onXVIZTimeslice(timeslice) {
+    const oldStreamCount = this.streamBuffer.streamCount;
     const bufferUpdated = this.streamBuffer.insert(timeslice);
     if (bufferUpdated) {
       this._bumpDataVersion();
     }
+
+    if (getXVIZConfig().DYNAMIC_STREAM_METADATA && this.streamBuffer.streamCount > oldStreamCount) {
+      const streamsMetadata = {};
+      const streamSettings = this.get('streamSettings');
+
+      for (const streamName in timeslice.streams) {
+        streamsMetadata[streamName] = timeslice.streams[streamName].__metadata;
+
+        // Add new stream name to stream settings (default on)
+        if (!(streamName in streamSettings)) {
+          streamSettings[streamName] = true;
+        }
+      }
+      this.set('streamsMetadata', streamsMetadata);
+    }
+
     return bufferUpdated;
   }
 

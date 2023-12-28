@@ -22,17 +22,24 @@ import {PointCloudLayer as CorePointCloudLayer} from '@deck.gl/layers';
 
 import vs from './point-cloud-layer-vertex.glsl';
 
+// Both cases are for backwards compatibility
 /* eslint-disable camelcase */
 const COLOR_MODE = {
   default: 0,
   elevation: 1,
-  distance_to_vehicle: 2
+  distance_to_vehicle: 2,
+  DEFAULT: 0,
+  ELEVATION: 1,
+  DISTANCE_TO_VEHICLE: 2
 };
 
 const COLOR_DOMAIN = {
   default: [0, 0],
   elevation: [0, 3],
-  distance_to_vehicle: [0, 60]
+  distance_to_vehicle: [0, 60],
+  DEFAULT: [0, 0],
+  ELEVATION: [0, 3],
+  DISTANCE_TO_VEHICLE: [0, 60]
 };
 /* eslint-enable camelcase */
 
@@ -69,25 +76,20 @@ export default class PointCloudLayer extends CorePointCloudLayer {
       const {instanceColors} = this.getAttributeManager().getAttributes();
       const colorSize = props.instanceColors ? props.instanceColors.length / props.numInstances : 4;
       instanceColors.size = colorSize;
-      this.setState({colorSize});
     }
   }
 
   draw({uniforms}) {
-    const {pointSize, colorMode, colorDomain} = this.props;
-    const {vehicleDistanceTransform, colorSize} = this.state;
+    const {colorMode, colorDomain} = this.props;
+    const {vehicleDistanceTransform} = this.state;
 
-    this.state.model
-      .setUniforms(
-        Object.assign({}, uniforms, {
-          pointSize,
-          colorSize,
-          colorMode: COLOR_MODE[colorMode] || COLOR_MODE.default,
-          colorDomain: colorDomain || COLOR_DOMAIN[colorMode] || COLOR_DOMAIN.default,
-          vehicleDistanceTransform
-        })
-      )
-      .draw();
+    super.draw({
+      uniforms: Object.assign({}, uniforms, {
+        colorMode: COLOR_MODE[colorMode] || COLOR_MODE.default,
+        colorDomain: colorDomain || COLOR_DOMAIN[colorMode] || COLOR_DOMAIN.default,
+        vehicleDistanceTransform
+      })
+    });
   }
 }
 

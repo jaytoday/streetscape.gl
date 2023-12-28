@@ -24,7 +24,7 @@ export default `\
 attribute vec3 positions;
 
 attribute vec3 instancePositions;
-attribute vec2 instancePositions64xyLow;
+attribute vec3 instancePositions64Low;
 attribute float instanceAngles;
 attribute float instanceSizes;
 attribute vec4 instanceColors;
@@ -53,12 +53,12 @@ void main(void) {
   vec2 vertex_offset = (texCoords / 2.0 + instanceOffsets / iconSize) * sizeScale * instanceSizes;
   vec3 vertex = vec3(
     vertex_offset.x,
-    vertex_offset.y * (1.0 - render3D),
+    vertex_offset.y * (render3D - 1.0),
     -vertex_offset.y * render3D
   );
 
   vec3 offset = project_size(vec3(rotationMatrix * vertex.xy, vertex.z));
-  gl_Position = project_position_to_clipspace(instancePositions, instancePositions64xyLow, offset);
+  gl_Position = project_position_to_clipspace(instancePositions, instancePositions64Low, offset);
 
   vTextureCoords = mix(
     instanceIconFrames.xy,
@@ -66,9 +66,7 @@ void main(void) {
     (texCoords + 1.0) / 2.0
   ) / iconsTextureDim;
 
-  vTextureCoords.y = 1.0 - vTextureCoords.y;
-
-  vColor = instanceColors / 255.;
+  vColor = instanceColors;
 
   picking_setPickingColor(instancePickingColors);
 }

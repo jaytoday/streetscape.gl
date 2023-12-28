@@ -33,8 +33,10 @@ enableDOMLogging({
   getStyle: message => ({
     background: failed ? '#F28E82' : '#8ECA6C',
     position: 'absolute',
+    top: '450px',
     width: '100%'
   })
 });
 
 require('./modules/core');
+require('./render');

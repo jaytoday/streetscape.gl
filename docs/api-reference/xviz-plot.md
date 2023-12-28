@@ -33,7 +33,7 @@ Custom CSS overrides. Supports all
 [MetricChart](https://github.com/uber-web/monochrome/blob/master/src/metric-card/README.md#styling-1)
 and
 [RichMetricChart](https://github.com/uber-web/monochrome/blob/master/src/metric-card/README.md#styling-2)
-options.
+options. Supports `missingData` option as an override to `MissingDataCard` component.
 
 ##### getColor (Object|Function|String, optional)
 
@@ -100,9 +100,9 @@ The following props are automatically populated when the `log` prop is provided.
 manually if the component is used without a `XVIZLoader` instance, e.g. connected with a Redux
 store:
 
-##### metadata (Object)
+##### streamsMetadata (Object)
 
-The metadata of the current log.
+A map from stream names to their metadata.
 
 ##### variables (Object)
 

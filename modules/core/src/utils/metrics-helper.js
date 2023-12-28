@@ -18,9 +18,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-const getX = d => d.time;
-const variableNullFilter = value => value !== undefined;
+import {getTimeSeriesStreamEntry} from './stream-utils';
 
+const getX = d => d.time;
+
+// Returns timeSeries values for the first stream entry, excluding entries with an object_id.
 function getTimeSeriesForStream(streamName, metadata, stream, target) {
   if (metadata.nograph) {
     return;
@@ -29,8 +31,8 @@ function getTimeSeriesForStream(streamName, metadata, stream, target) {
   const mapper = metadata.valueMap;
   const scale = metadata.scale || 1;
   const getY = mapper ? d => mapper[d.variable] : d => d.variable * scale;
-
-  const sampleDatum = stream.find(variableNullFilter);
+  const entry = stream.find(getTimeSeriesStreamEntry);
+  const sampleDatum = getTimeSeriesStreamEntry(entry);
   if (!sampleDatum || !Number.isFinite(getY(sampleDatum))) {
     return;
   }
@@ -39,28 +41,40 @@ function getTimeSeriesForStream(streamName, metadata, stream, target) {
   target.getX = getX;
   target.getY = getY;
   target.unit = metadata.unit || '';
-  target.data[streamName] = stream.filter(variableNullFilter);
+  target.data[streamName] = stream.filter(getTimeSeriesStreamEntry).map(getTimeSeriesStreamEntry);
 }
 
 /**
- * Get the time series for given streams
- * @param logMetadata {object} log metadata
- * @param streams array of streams data
+ * Get the stream time series for the given streams.
+ *
+ * If the stream contains multiple time entries the first stream level
+ * entry is use, which should be the entry with the smallest time.
+ *
+ * A stream level entry is one with no object_id.
+ *
+ * @param streamsMetadata {object} map from stream names to stream metadata
+ * @param streams array of timeSeries streams data. The array contains either
+ *                a single entry or an array of entries
  * @returns {Array} array of time series data
  */
-export function getTimeSeries({metadata = {}, streamNames, streams}) {
+export function getTimeSeries({streamsMetadata = {}, streamNames, streams}) {
   const timeSeries = {
     isLoading: true,
-    data: {}
+    data: {},
+    missingStreams: []
   };
   for (const streamName of streamNames) {
     // ui configuration for this stream
-    const streamMetadata = (metadata.streams && metadata.streams[streamName]) || {};
+    const streamMetadata = (streamsMetadata && streamsMetadata[streamName]) || {};
     const stream = streams[streamName];
     if (stream) {
       getTimeSeriesForStream(streamName, streamMetadata, stream, timeSeries);
     }
   }
+
+  timeSeries.missingStreams = streamNames.filter(
+    streamToDisplay => !timeSeries.data[streamToDisplay]
+  );
 
   return timeSeries;
 }

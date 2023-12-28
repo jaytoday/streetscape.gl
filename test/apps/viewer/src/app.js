@@ -23,7 +23,7 @@
 import React, {PureComponent} from 'react';
 import {render} from 'react-dom';
 
-import {setXVIZConfig} from '@xviz/parser';
+import {setXVIZConfig, getXVIZConfig} from '@xviz/parser';
 import {
   LogViewer,
   PlaybackControl,
@@ -52,6 +52,8 @@ import {default as XVIZLoaderFactory} from './log-from-factory';
 
 setXVIZConfig(XVIZ_CONFIG);
 
+const TIMEFORMAT_SCALE = getXVIZConfig().TIMESTAMP_FORMAT === 'seconds' ? 1000 : 1;
+
 // Pass through path & parameters to loaders
 function buildLoaderOptions() {
   const url = new URL(window.location);
@@ -59,14 +61,17 @@ function buildLoaderOptions() {
   // I prefer to work with an object
   const params = {};
   for (const [k, v] of url.searchParams.entries()) {
-    params[k] = v;
+    if (Number.isNaN(Number.parseFloat(v))) {
+      params[k] = v;
+    } else {
+      params[k] = Number.parseFloat(v);
+    }
   }
 
   const {
     // These will not be passed through to server request
     server = 'ws://localhost:3000',
     worker = true,
-    bufferLength = 10,
     // These will be passed through to server request
     log = 'mock',
     profile,
@@ -98,7 +103,7 @@ function buildLoaderOptions() {
     options.duration = duration;
   }
   if (__IS_LIVE__) {
-    options.bufferLength = bufferLength;
+    options.bufferLength = params.bufferLength || 10;
   }
 
   return options;
@@ -232,7 +237,7 @@ class Example extends PureComponent {
             <PlaybackControl
               width="100%"
               log={log}
-              formatTimestamp={x => new Date(x).toUTCString()}
+              formatTimestamp={x => new Date(x * TIMEFORMAT_SCALE).toUTCString()}
             />
           </div>
         </div>

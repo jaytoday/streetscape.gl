@@ -17,28 +17,38 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-import {SignLayer, TrafficLightLayer, ImageryLayer} from '@streetscape.gl/layers';
+import {SignLayer, TrafficLightLayer, ImageryLayer, LaneLayer} from '@streetscape.gl/layers';
+
+const signLayerProps = {
+  coordinate: 'VEHICLE_RELATIVE',
+
+  iconAtlas:
+    'https://raw.githubusercontent.com/uber/deck.gl/master/examples/layer-browser/data/icon-atlas.png',
+  iconMapping:
+    'https://raw.githubusercontent.com/uber/deck.gl/master/examples/layer-browser/data/icon-atlas.json',
+  data: [
+    {position: [0, 4, 1], angle: 0},
+    {position: [0, 6, 1], angle: Math.PI / 2},
+    {position: [0, 8, 1], angle: Math.PI},
+    {position: [0, 10, 1], angle: (Math.PI * 3) / 2}
+  ],
+
+  getPosition: d => d.position,
+  getAngle: d => d.angle,
+  getIcon: d => 'marker-warning',
+  getSize: 1
+};
 
 export default [
   new SignLayer({
-    id: 'sign-layer',
-    coordinate: 'VEHICLE_RELATIVE',
-
-    iconAtlas:
-      'https://raw.githubusercontent.com/uber/deck.gl/master/examples/layer-browser/data/icon-atlas.png',
-    iconMapping:
-      'https://raw.githubusercontent.com/uber/deck.gl/master/examples/layer-browser/data/icon-atlas.json',
-    data: [
-      {position: [0, 4, 1], angle: 0},
-      {position: [0, 6, 1], angle: Math.PI / 2},
-      {position: [0, 8, 1], angle: Math.PI},
-      {position: [0, 10, 1], angle: (Math.PI * 3) / 2}
-    ],
-
-    getPosition: d => d.position,
-    getAngle: d => d.angle,
-    getIcon: d => 'marker-warning',
-    getSize: 1
+    ...signLayerProps,
+    id: 'sign-layer-3d',
+    render3D: true
+  }),
+  new SignLayer({
+    ...signLayerProps,
+    id: 'sign-layer-2d',
+    render3D: false
   }),
 
   new TrafficLightLayer({
@@ -70,5 +80,40 @@ export default [
     uCount: 2,
     vCount: 2,
     transparentColor: [255, 255, 255, 0]
+  }),
+
+  new LaneLayer({
+    id: 'lanes',
+    coordinate: 'VEHICLE_RELATIVE',
+
+    data: [
+      {
+        path: [
+          [0, 0, 0],
+          [2, 1, 0],
+          [3, 3, 0],
+          [3.05, 3, 0],
+          [3.05, 3.05, 0],
+          [3.1, 3.05, 0],
+          [3.1, 3.1, 0],
+          [3.15, 3.1, 0],
+          [3.15, 3.15, 0],
+          [3.2, 3.15, 0],
+          [3.2, 3.2, 0],
+          [5, 4, 0],
+          [7, 2.4, 0],
+          [7, 0, 0],
+          [10, 0, 0]
+        ]
+      }
+    ],
+
+    highPrecisionDash: true,
+
+    getPath: d => d.path,
+    getColor: [80, 200, 0],
+    getColor2: [0, 128, 255],
+    getWidth: [0.1, 0.05, 0.1],
+    getDashArray: [4, 1, 1, 1]
   })
 ];

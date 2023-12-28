@@ -29,6 +29,9 @@ const BABEL_CONFIG = {
 
 const CONFIG = {
   mode: 'development',
+  devServer: {
+    historyApiFallback: true
+  },
   entry: {
     app: resolve('./src/app.js')
   },
@@ -44,18 +47,8 @@ const CONFIG = {
         // Compile ES2015 using bable
         test: /\.js$/,
         exclude: /node_modules/,
-        use: [
-          {
-            loader: 'babel-loader',
-            options: BABEL_CONFIG
-          }
-        ]
-      },
-      {
-        // Unfortunately, webpack doesn't import library sourcemaps on its own...
-        test: /\.js$/,
-        use: ['source-map-loader'],
-        enforce: 'pre'
+        loader: 'babel-loader',
+        options: BABEL_CONFIG
       }
     ]
   },

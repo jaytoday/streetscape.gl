@@ -24,6 +24,7 @@ import PropTypes from 'prop-types';
 import {StaticMap} from 'react-map-gl';
 import DeckGL from '@deck.gl/react';
 import {COORDINATE_SYSTEM} from '@deck.gl/core';
+import {_MapContext as MapContext} from 'react-map-gl';
 
 import ObjectLabelsOverlay from './object-labels-overlay';
 
@@ -38,14 +39,11 @@ import {resolveCoordinateTransform} from '../../utils/transform';
 import {mergeXVIZStyles} from '../../utils/style';
 import {normalizeStreamFilter} from '../../utils/stream-utils';
 import stats from '../../utils/stats';
+import memoize from '../../utils/memoize';
 
 import {DEFAULT_ORIGIN, CAR_DATA, LIGHTS, DEFAULT_CAR} from './constants';
 
 const noop = () => {};
-
-function getStreamMetadata(metadata, streamName) {
-  return (metadata && metadata.streams && metadata.streams[streamName]) || {};
-}
 
 const Z_INDEX = {
   car: 0,
@@ -59,6 +57,7 @@ export default class Core3DViewer extends PureComponent {
     // Props from loader
     frame: PropTypes.object,
     metadata: PropTypes.object,
+    streamsMetadata: PropTypes.object,
 
     // Rendering options
     showMap: PropTypes.bool,
@@ -75,8 +74,10 @@ export default class Core3DViewer extends PureComponent {
       PropTypes.func
     ]),
     customLayers: PropTypes.array,
+    customXVIZLayers: PropTypes.array,
     renderObjectLabel: PropTypes.func,
     getTransformMatrix: PropTypes.func,
+    viewOptions: PropTypes.object,
 
     // Callbacks
     onMapLoad: PropTypes.func,
@@ -100,6 +101,7 @@ export default class Core3DViewer extends PureComponent {
     viewMode: VIEW_MODE.PERSPECTIVE,
     xvizStyles: {},
     customLayers: [],
+    customXVIZLayers: [],
     onMapLoad: noop,
     onDeckLoad: noop,
     onViewStateChange: noop,
@@ -114,8 +116,12 @@ export default class Core3DViewer extends PureComponent {
     super(props);
 
     this.state = {
-      styleParser: this._getStyleParser(props)
+      styleParser: this._getStyleParser(props),
+      views: getViews(props.viewMode, props.viewOptions)
     };
+
+    this.getLayers = memoize(this._getLayers.bind(this));
+    this.getViewState = memoize(this._getViewState);
   }
 
   deckRef = React.createRef();
@@ -135,6 +141,9 @@ export default class Core3DViewer extends PureComponent {
       };
 
       nextProps.onViewStateChange({viewState, viewOffset});
+      this.setState({
+        views: getViews(nextProps.viewMode, nextProps.viewOptions)
+      });
     }
     if (
       this.props.metadata !== nextProps.metadata ||
@@ -197,8 +206,7 @@ export default class Core3DViewer extends PureComponent {
     return new XVIZStyleParser(mergeXVIZStyles(metadata && metadata.styles, xvizStyles));
   }
 
-  _getCarLayer() {
-    const {frame, car} = this.props;
+  _getCarLayer({frame, car}) {
     const {
       origin = DEFAULT_ORIGIN,
       mesh,
@@ -221,6 +229,7 @@ export default class Core3DViewer extends PureComponent {
           .scale(scale),
       mesh,
       data: CAR_DATA,
+      pickable: true,
       getPosition: d => d,
       getColor: color,
       texture,
@@ -232,30 +241,30 @@ export default class Core3DViewer extends PureComponent {
     });
   }
 
-  _getLayers() {
+  _getLayers(opts) {
     const {
       frame,
-      metadata,
-      showTooltip,
+      streamsMetadata,
       objectStates,
       customLayers,
-      getTransformMatrix
-    } = this.props;
-    if (!frame || !metadata) {
+      customXVIZLayers,
+      getTransformMatrix,
+      styleParser
+    } = opts;
+    if (!frame) {
       return [];
     }
 
     const {streams, lookAheads = {}} = frame;
-    const {styleParser} = this.state;
 
-    const streamFilter = normalizeStreamFilter(this.props.streamFilter);
+    const streamFilter = normalizeStreamFilter(opts.streamFilter);
     const featuresAndFutures = new Set(
       Object.keys(streams)
         .concat(Object.keys(lookAheads))
         .filter(streamFilter)
     );
 
-    let layerList = [this._getCarLayer()];
+    let layerList = [this._getCarLayer(opts)];
 
     layerList = layerList.concat(
       Array.from(featuresAndFutures)
@@ -263,10 +272,10 @@ export default class Core3DViewer extends PureComponent {
           // Check lookAheads first because it will contain the selected futures
           // while streams would contain the full futures array
           const stream = lookAheads[streamName] || streams[streamName];
-          const streamMetadata = getStreamMetadata(metadata, streamName);
           const coordinateProps = resolveCoordinateTransform(
             frame,
-            streamMetadata,
+            streamName,
+            streamsMetadata[streamName],
             getTransformMatrix
           );
 
@@ -279,8 +288,7 @@ export default class Core3DViewer extends PureComponent {
               id: `xviz-${streamName}`,
               ...coordinateProps,
 
-              pickable: showTooltip || primitives[0].id,
-
+              pickable: true,
               data: primitives,
               style: stylesheet,
               objectStates,
@@ -291,7 +299,9 @@ export default class Core3DViewer extends PureComponent {
               zIndex: Z_INDEX[primitives[0].type] || 0,
 
               // Selection props (app defined, not used by deck.gl)
-              streamName
+              streamName,
+              streamMetadata: streamsMetadata[streamName],
+              customXVIZLayers
             });
           }
           return null;
@@ -310,10 +320,14 @@ export default class Core3DViewer extends PureComponent {
         if (props.streamName) {
           // Use log data
           const stream = streams[props.streamName];
-          const streamMetadata = getStreamMetadata(metadata, props.streamName);
           Object.assign(
             additionalProps,
-            resolveCoordinateTransform(frame, streamMetadata, getTransformMatrix),
+            resolveCoordinateTransform(
+              frame,
+              props.streamName,
+              streamsMetadata[props.streamName],
+              getTransformMatrix
+            ),
             {
               data: stream && stream.features
             }
@@ -322,7 +336,7 @@ export default class Core3DViewer extends PureComponent {
           // Apply log-specific coordinate props
           Object.assign(
             additionalProps,
-            resolveCoordinateTransform(frame, props, getTransformMatrix)
+            resolveCoordinateTransform(frame, null, props, getTransformMatrix)
           );
         } else {
           return layer;
@@ -338,20 +352,27 @@ export default class Core3DViewer extends PureComponent {
     );
   }
 
-  _layerFilter({layer, viewport, isPicking}) {
-    if (viewport.id === 'driver') {
-      return layer.id !== 'car';
+  _layerFilter = ({layer, viewport, isPicking}) => {
+    if (viewport.id === 'driver' && layer.id === 'car') {
+      return false;
+    }
+    if (isPicking) {
+      if (this.props.showTooltip) {
+        return true;
+      }
+      if (layer.id.startsWith('xviz-')) {
+        const sampleData = layer.props.data[0];
+        return sampleData && sampleData.id;
+      }
     }
     return true;
-  }
+  };
 
   _getCursor = () => {
     return this.isHovering ? 'pointer' : 'crosshair';
   };
 
-  _getViewState() {
-    const {viewMode, frame, viewState, viewOffset} = this.props;
-
+  _getViewState({viewMode, frame, viewState, viewOffset}) {
     const trackedPosition = frame
       ? {
           longitude: frame.trackPosition[0],
@@ -368,16 +389,34 @@ export default class Core3DViewer extends PureComponent {
     const {
       mapboxApiAccessToken,
       frame,
-      metadata,
+      car,
+      streamsMetadata,
+      streamFilter,
       objectStates,
       renderObjectLabel,
+      customLayers,
       getTransformMatrix,
       style,
       mapStyle,
       viewMode,
-      showMap
+      viewState,
+      viewOffset,
+      showMap,
+      customXVIZLayers
     } = this.props;
-    const {styleParser} = this.state;
+    const {styleParser, views} = this.state;
+    const layers = this.getLayers({
+      frame,
+      car,
+      streamsMetadata,
+      streamFilter,
+      objectStates,
+      customLayers,
+      getTransformMatrix,
+      styleParser,
+      customXVIZLayers
+    });
+    const viewStates = this.getViewState({viewMode, frame, viewState, viewOffset});
 
     return (
       <DeckGL
@@ -385,15 +424,16 @@ export default class Core3DViewer extends PureComponent {
         height="100%"
         ref={this.deckRef}
         effects={[LIGHTS]}
-        views={getViews(viewMode)}
-        viewState={this._getViewState()}
-        layers={this._getLayers()}
+        views={views}
+        viewState={viewStates}
+        layers={layers}
         layerFilter={this._layerFilter}
         getCursor={this._getCursor}
         onLoad={this._onDeckLoad}
         onHover={this._onLayerHover}
         onClick={this._onLayerClick}
         onViewStateChange={this._onViewStateChange}
+        ContextProvider={MapContext.Provider}
         _onMetrics={this._onMetrics}
       >
         {showMap && (
@@ -410,7 +450,7 @@ export default class Core3DViewer extends PureComponent {
         <ObjectLabelsOverlay
           objectSelection={objectStates.selected}
           frame={frame}
-          metadata={metadata}
+          streamsMetadata={streamsMetadata}
           renderObjectLabel={renderObjectLabel}
           xvizStyleParser={styleParser}
           style={style}

@@ -18,9 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import {Layer} from '@deck.gl/core';
-import {CubeGeometry, SphereGeometry, Model, PhongMaterial, fp64} from '@luma.gl/core';
-const {fp64LowPart} = fp64;
+import {Layer, project32, gouraudLighting, picking} from '@deck.gl/core';
+import {CubeGeometry, SphereGeometry, Model} from '@luma.gl/core';
 import GL from '@luma.gl/constants';
 
 import vs from './traffic-light-layer-vertex.glsl';
@@ -52,17 +51,15 @@ const defaultProps = {
 
   sizeScale: {type: 'number', value: 0.15, min: 0},
 
-  fp64: false,
-  material: new PhongMaterial({
+  material: {
     shininess: 0,
     specularColor: [0, 0, 0]
-  })
+  }
 };
 
 export default class TrafficLightLayer extends Layer {
   getShaders() {
-    const projectModule = this.use64bitProjection() ? 'project64' : 'project32';
-    return {vs, fs, modules: [projectModule, 'gouraud-lighting', 'picking']};
+    return {vs, fs, modules: [project32, gouraudLighting, picking]};
   }
 
   initializeState() {
@@ -78,25 +75,22 @@ export default class TrafficLightLayer extends Layer {
     attributeManager.addInstanced({
       instancePositions: {
         size: 3,
+        type: GL.DOUBLE,
+        fp64: this.use64bitPositions(),
         accessor: 'getPosition'
-      },
-      instancePositions64xyLow: {
-        size: 2,
-        accessor: 'getPosition',
-        update: this.calculateInstancePositions64xyLow
       },
       instanceAngles: {size: 1, accessor: 'getAngle'},
       instanceShapes: {
         size: 1,
         type: GL.UNSIGNED_BYTE,
         accessor: 'getShape',
-        update: this.calculateInstanceShapes
+        transform: shape => LIGHT_SHAPE[shape] || 0
       },
       instanceColors: {
         size: 3,
         type: GL.UNSIGNED_BYTE,
         accessor: 'getColor',
-        update: this.calculateInstanceColors
+        transform: color => LIGHT_COLOR[color] || LIGHT_COLOR.invalid
       },
       instanceStates: {
         size: 1,
@@ -158,54 +152,12 @@ export default class TrafficLightLayer extends Layer {
     return {box, lights};
   }
 
-  updateAttributes(props) {
-    super.updateAttributes(props);
-    const attributeManager = this.getAttributeManager();
-    const changedAttributes = attributeManager.getChangedAttributes({clearChangedFlags: true});
+  updateAttributes(changedAttributes) {
+    super.updateAttributes(changedAttributes);
 
     for (const model of this.getModels()) {
       model.setInstanceCount(this.props.data.length);
       model.setAttributes(changedAttributes);
-    }
-  }
-
-  calculateInstancePositions64xyLow(attribute) {
-    const isFP64 = this.use64bitPositions();
-    attribute.constant = !isFP64;
-
-    if (!isFP64) {
-      attribute.value = new Float32Array(2);
-      return;
-    }
-
-    const {data, getPosition} = this.props;
-    const {value} = attribute;
-    let i = 0;
-    for (const point of data) {
-      const position = getPosition(point);
-      value[i++] = fp64LowPart(position[0]);
-      value[i++] = fp64LowPart(position[1]);
-    }
-  }
-
-  calculateInstanceColors(attribute) {
-    const {data, getColor} = this.props;
-    const {value} = attribute;
-    let i = 0;
-    for (const point of data) {
-      const color = LIGHT_COLOR[getColor(point)] || LIGHT_COLOR.invalid;
-      value[i++] = color[0];
-      value[i++] = color[1];
-      value[i++] = color[2];
-    }
-  }
-
-  calculateInstanceShapes(attribute) {
-    const {data, getShape} = this.props;
-    const {value} = attribute;
-    let i = 0;
-    for (const point of data) {
-      value[i++] = LIGHT_SHAPE[getShape(point)] || 0;
     }
   }
 }
